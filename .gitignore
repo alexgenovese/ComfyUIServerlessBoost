@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+pip-selfcheck.json
+
+# Models and weights (too large for git)
+*.pth
+*.safetensors
+*.ckpt
+HYPIR_sd2.pth
+cache/
+models/
+
+# HYPIR repository (downloaded during build)
+HYPIR/
+
+# Temporary files
+*.tmp
+temp/
+output/
+*.png
+*.jpg
+*.jpeg
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# COG
+.cog/
+
+# Logs
+*.log
+logs/
+
+# cache folders 
+compiled_models/
+generated_images/
+
+.env
