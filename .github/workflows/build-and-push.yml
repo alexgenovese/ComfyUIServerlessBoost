@@ -67,8 +67,6 @@ jobs:
   build-cpu:
     needs: prepare
     runs-on: ubuntu-latest
-    outputs:
-      repo: ${{ steps.setrepo.outputs.repo }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,25 +98,20 @@ jobs:
           cache-from: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cpu
           cache-to: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cpu,mode=max
 
-      - name: Set job output repo
-        id: setrepo
-        run: |
-          echo "repo=${{ needs.prepare.outputs.repo }}" >> $GITHUB_OUTPUT
-
   smoke-test-cpu:
-    needs: build-cpu
+    needs: [build-cpu]
     runs-on: ubuntu-latest
     steps:
 
       - name: Pull CPU image
         run: |
-          echo "REPO=${{ needs.build-cpu.outputs.repo }}"
-          docker pull "${{ needs.build-cpu.outputs.repo }}:cpu-latest"
+          echo "REPO=${{ needs.prepare.outputs.repo }}"
+          docker pull "${{ needs.prepare.outputs.repo }}:cpu-latest"
 
       - name: Run container (detached) with fast-start flags
         run: |
           # Avvio il container CPU con opzioni headless e parametri di avvio minimi per velocizzare il cold start
-          docker run --rm -d --name comfyui-smoke -p 8188:8188 "${{ needs.build-cpu.outputs.repo }}:cpu-latest" \
+          docker run --rm -d --name comfyui-smoke -p 8188:8188 "${{ needs.prepare.outputs.repo }}:cpu-latest" \
             --cpu --cpu-vae --disable-auto-launch --dont-print-server
 
       - name: Wait for ComfyUI to respond
