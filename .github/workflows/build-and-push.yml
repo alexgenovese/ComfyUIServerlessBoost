@@ -1,0 +1,134 @@
+name: Build and Publish multi-arch images (CUDA + CPU) and smoke-test CPU
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  CUDA_BASE: nvidia/cuda:12.4.0-runtime-ubuntu22.04
+  CPU_BASE: python:3.10-slim
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      repo: ${{ steps.repo.outputs.REPO }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve target repository
+        id: repo
+        run: |
+          if [ -n "${{ secrets.DOCKERHUB_REPO }}" ]; then
+            echo "REPO=${{ secrets.DOCKERHUB_REPO }}" >> $GITHUB_OUTPUT
+          else
+            echo "REPO=${{ secrets.DOCKERHUB_USERNAME }}/comfyui-serverless" >> $GITHUB_OUTPUT
+          fi
+
+  build-cuda:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push CUDA image (multi-arch if available)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ needs.prepare.outputs.repo }}:cuda-latest,${{ needs.prepare.outputs.repo }}:cuda-${{ github.sha }}
+          build-args: |
+            BASE_IMAGE=${{ env.CUDA_BASE }}
+          cache-from: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cuda
+          cache-to: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cuda,mode=max
+
+  build-cpu:
+    needs: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      repo: ${{ steps.setrepo.outputs.repo }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push CPU image (arm64+amd64)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ needs.prepare.outputs.repo }}:cpu-latest,${{ needs.prepare.outputs.repo }}:cpu-${{ github.sha }}
+          build-args: |
+            BASE_IMAGE=${{ env.CPU_BASE }}
+          cache-from: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cpu
+          cache-to: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cpu,mode=max
+
+      - name: Set job output repo
+        id: setrepo
+        run: |
+          echo "repo=${{ needs.prepare.outputs.repo }}" >> $GITHUB_OUTPUT
+
+  smoke-test-cpu:
+    needs: build-cpu
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Pull CPU image
+        run: |
+          echo "REPO=${{ needs.build-cpu.outputs.repo }}"
+          docker pull "${{ needs.build-cpu.outputs.repo }}:cpu-latest"
+
+      - name: Run container (detached) with fast-start flags
+        run: |
+          # Avvio il container CPU con opzioni headless e parametri di avvio minimi per velocizzare il cold start
+          docker run --rm -d --name comfyui-smoke -p 8188:8188 "${{ needs.build-cpu.outputs.repo }}:cpu-latest" \
+            --cpu --cpu-vae --disable-auto-launch --dont-print-server
+
+      - name: Wait for ComfyUI to respond
+        run: |
+          echo "Waiting for ComfyUI on http://localhost:8188/"
+          for i in $(seq 1 60); do
+            if curl --fail --silent --show-error http://localhost:8188/ >/dev/null 2>&1; then
+              echo "ComfyUI is up"
+              break
+            fi
+            echo "Still waiting... ($i)"
+            sleep 2
+          done
+
+      - name: Fetch container logs (for visibility)
+        run: |
+          docker logs comfyui-smoke || true
+
+      - name: Stop container
+        if: always()
+        run: |
+          docker stop comfyui-smoke || true

@@ -1,0 +1,38 @@
+services:
+  comfyui-serverless:
+    build: .
+    image: comfyui-serverless-optimized
+    container_name: comfyui-serverless-api
+    ports:
+      - "8188:8188"
+    environment:
+      # Ottimizzazioni per cold start serverless
+      - CUDA_VISIBLE_DEVICES=
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONOPTIMIZE=2
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - TORCH_HOME=/tmp/torch
+      - HF_HOME=/tmp/huggingface
+      - LAZY_INSTALL=0
+    volumes:
+      # Mount per persistenza modelli (opzionale per serverless)
+      - ./models:/comfyui/models
+      - ./output:/comfyui/output
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8188/system_stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    # Ottimizzazioni risorse per startup veloce
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
