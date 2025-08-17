@@ -23,11 +23,14 @@ jobs:
 
       - name: Resolve target repository
         id: repo
+        env:
+          DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_REPO }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          if [ -n "${{ secrets.DOCKERHUB_REPO }}" ]; then
-            echo "REPO=${{ secrets.DOCKERHUB_REPO }}" >> $GITHUB_OUTPUT
+          if [ -n "$DOCKERHUB_REPO" ]; then
+            echo "REPO=$DOCKERHUB_REPO" >> $GITHUB_OUTPUT
           else
-            echo "REPO=${{ secrets.DOCKERHUB_USERNAME }}/comfyui-serverless" >> $GITHUB_OUTPUT
+            echo "REPO=${DOCKERHUB_USERNAME}/comfyui-serverless" >> $GITHUB_OUTPUT
           fi
 
   build-cuda:
@@ -99,7 +102,7 @@ jobs:
           cache-to: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cpu,mode=max
 
   smoke-test-cpu:
-    needs: [build-cpu]
+    needs: [build-cpu, prepare]
     runs-on: ubuntu-latest
     steps:
 
