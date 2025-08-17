@@ -192,4 +192,4 @@ Contributions are welcome! Please fork, branch, and submit a pull request:
 
 ## 📄 License
 
-This project is MIT licensed. See [LICENSE](LICENSE) for details.
+This project is Apache 2.0 licensed. See [LICENSE](LICENSE) for details.
