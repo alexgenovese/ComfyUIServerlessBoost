@@ -1,9 +1,12 @@
 name: Build and Publish multi-arch images (CUDA + CPU) and smoke-test CPU
 
+
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+  release:
+    types: [published]
 
 env:
   CUDA_BASE: nvidia/cuda:12.4.0-runtime-ubuntu22.04
@@ -52,7 +55,10 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ${{ needs.prepare.outputs.repo }}:cuda-latest,${{ needs.prepare.outputs.repo }}:cuda-${{ github.sha }}
+          tags: |
+            ${{ needs.prepare.outputs.repo }}:cuda-latest
+            ${{ needs.prepare.outputs.repo }}:cuda-${{ github.sha }}
+            ${{ github.event.release.tag_name && format('${{ needs.prepare.outputs.repo }}:cuda-{0}', github.event.release.tag_name) || '' }}
           build-args: |
             BASE_IMAGE=${{ env.CUDA_BASE }}
           cache-from: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cuda
@@ -85,7 +91,10 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ needs.prepare.outputs.repo }}:cpu-latest,${{ needs.prepare.outputs.repo }}:cpu-${{ github.sha }}
+          tags: |
+            ${{ needs.prepare.outputs.repo }}:cpu-latest
+            ${{ needs.prepare.outputs.repo }}:cpu-${{ github.sha }}
+            ${{ github.event.release.tag_name && format('${{ needs.prepare.outputs.repo }}:cpu-{0}', github.event.release.tag_name) || '' }}
           build-args: |
             BASE_IMAGE=${{ env.CPU_BASE }}
           cache-from: type=registry,ref=${{ needs.prepare.outputs.repo }}:cache-cpu
