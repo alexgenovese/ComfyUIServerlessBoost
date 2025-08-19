@@ -8,10 +8,32 @@ set -e
 IMAGE_NAME="comfyui-serverless-optimized"
 CONTAINER_NAME="comfyui-serverless-api"
 PORT="8188"
+BUILD_SNAPSHOT=""
 
 function build() {
     echo "🔨 Building ottimizzato ComfyUI Serverless..."
-    time docker build -t $IMAGE_NAME .
+    # If BUILD_SNAPSHOT is a local file path, copy it to build context as models_snapshot.json
+    if [ -n "$BUILD_SNAPSHOT" ] && [ -f "$BUILD_SNAPSHOT" ]; then
+        echo "📁 Using local snapshot file: $BUILD_SNAPSHOT"
+        # Create a minimal models folder and place snapshot inside for build context
+        mkdir -p ./models
+        cp "$BUILD_SNAPSHOT" ./models/models_snapshot.json
+        echo "Placed local snapshot in ./models/models_snapshot.json (will be copied into image)"
+        BUILD_ARG=""
+        MODEL_IMPORT_ARG="--build-arg MODEL_IMPORT=0"
+    elif [ -n "$BUILD_SNAPSHOT" ]; then
+        echo "🌐 Using snapshot URL: $BUILD_SNAPSHOT"
+        BUILD_ARG="--build-arg MODEL_SNAPSHOT_URL=$BUILD_SNAPSHOT"
+        MODEL_IMPORT_ARG="--build-arg MODEL_IMPORT=1"
+    else
+        BUILD_ARG=""
+        MODEL_IMPORT_ARG="--build-arg MODEL_IMPORT=0"
+    fi
+
+    time docker build $BUILD_ARG $MODEL_IMPORT_ARG -t $IMAGE_NAME .
+    # Cleanup local copy if created
+    # Cleanup any temporary models snapshot in build context
+    [ -d ./models ] && rm -rf ./models || true
     echo "✅ Build completato!"
 }
 

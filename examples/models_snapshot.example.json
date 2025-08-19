@@ -1,0 +1,40 @@
+{
+  "models": [
+    {
+      "name": "stable-diffusion-v1.safetensors",
+      "download_url": "https://example.com/models/stable-diffusion-v1.safetensors",
+      "path": "checkpoints/stable-diffusion-v1.safetensors",
+      "type": "checkpoint",
+      "version": "1.0"
+    },
+    {
+      "filename": "vae-ft-mse.pt",
+      "url": "https://example.com/models/vae-ft-mse.pt",
+      "relative_path": "vae/vae-ft-mse.pt",
+      "type": "vae"
+    },
+    {
+      "name": "ldm-diffusers.zip",
+      "download_url": "https://huggingface.co/username/ldm-diffusers/resolve/main/ldm-diffusers.zip",
+      "path": "diffusers/ldm-diffusers.zip",
+      "type": "diffusers",
+      "note": "diffusers archive (zip)"
+    },
+    {
+      "name": "clip_embeddings.bin",
+      "file_url": "https://example.com/models/clip_embeddings.bin",
+      "type": "embeddings"
+    },
+    {
+      "name": "controlnet-canny.safetensors",
+      "download_url": "https://example.com/models/controlnet-canny.safetensors",
+      "path": "controlnet/controlnet-canny.safetensors",
+      "type": "controlnet"
+    },
+    {
+      "id": "loras/example",
+      "url": "https://example.com/models/loras/example.safetensors",
+      "path": "loras/example.safetensors"
+    }
+  ]
+}
