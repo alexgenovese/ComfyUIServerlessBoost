@@ -79,6 +79,9 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git . && \
 # Copy models placeholder (from build context)
 COPY models /comfyui/models
 
+# Copy snapshot file if it exists (for testing)
+COPY pip_snapshot.example.json /comfyui/pip_snapshot.example.json
+
 # Copy import helper
 COPY scripts/import_models.py /comfyui/scripts/import_models.py
 RUN chmod +x /comfyui/scripts/import_models.py || true
@@ -92,6 +95,7 @@ FROM build AS pip-install
 
 ARG MODEL_SNAPSHOT_URL=""
 ARG MODEL_IMPORT=0
+ARG COMFY_SNAPSHOT_URL=""
 
 # Create venv and upgrade pip tooling
 RUN python3 -m pip install --upgrade pip virtualenv wheel setuptools && \
@@ -120,12 +124,33 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     /comfyui/venv/bin/pip install --no-cache-dir --find-links /comfyui/pip_wheels -r requirements.txt || true
 
+# Install comfy-cli for snapshot restore functionality
+RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
+    /comfyui/venv/bin/pip install --no-cache-dir comfy-cli || true
+
 # Optionally install torch from wheels (best-effort)
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     if echo "${BASE_IMAGE}" | grep -q "nvidia/cuda"; then \
         /comfyui/venv/bin/pip install --no-cache-dir --find-links /comfyui/pip_wheels torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu121 || true; \
     else \
         /comfyui/venv/bin/pip install --no-cache-dir --find-links /comfyui/pip_wheels torch torchvision torchaudio || true; \
+    fi
+
+# Optional: restore ComfyUI snapshot during build (if COMFY_SNAPSHOT_URL is provided)
+RUN if [ -n "${COMFY_SNAPSHOT_URL}" ]; then \
+        echo "COMFY_SNAPSHOT_URL provided: fetching snapshot from ${COMFY_SNAPSHOT_URL}" && \
+        wget -q -O /comfyui/comfy_snapshot.json "${COMFY_SNAPSHOT_URL}" || echo "Failed to fetch snapshot from URL" && \
+        if [ -f /comfyui/comfy_snapshot.json ]; then \
+            echo "Restoring ComfyUI snapshot from downloaded file" && \
+            cd /comfyui && \
+            /comfyui/venv/bin/comfy node restore-snapshot comfy_snapshot || echo "Comfy snapshot restore finished with errors"; \
+        fi; \
+    elif [ -f /comfyui/pip_snapshot.example.json ]; then \
+        echo "Using local pip_snapshot.example.json for testing" && \
+        cd /comfyui && \
+        /comfyui/venv/bin/comfy node restore-snapshot pip_snapshot.example || echo "Comfy snapshot restore finished with errors"; \
+    else \
+        echo "No snapshot provided, skipping snapshot restore"; \
     fi
 
 ################################################################################

@@ -12,6 +12,13 @@ BUILD_SNAPSHOT=""
 
 function build() {
     echo "🔨 Building ottimizzato ComfyUI Serverless..."
+    
+    # Check for snapshot URL parameter
+    if [ -n "$2" ]; then
+        BUILD_SNAPSHOT="$2"
+        echo "📋 Using snapshot from parameter: $BUILD_SNAPSHOT"
+    fi
+    
     # If BUILD_SNAPSHOT is a local file path, copy it to build context as models_snapshot.json
     if [ -n "$BUILD_SNAPSHOT" ] && [ -f "$BUILD_SNAPSHOT" ]; then
         echo "📁 Using local snapshot file: $BUILD_SNAPSHOT"
@@ -23,8 +30,15 @@ function build() {
         MODEL_IMPORT_ARG="--build-arg MODEL_IMPORT=0"
     elif [ -n "$BUILD_SNAPSHOT" ]; then
         echo "🌐 Using snapshot URL: $BUILD_SNAPSHOT"
-        BUILD_ARG="--build-arg MODEL_SNAPSHOT_URL=$BUILD_SNAPSHOT"
-        MODEL_IMPORT_ARG="--build-arg MODEL_IMPORT=1"
+        # Validate URL format
+        if [[ "$BUILD_SNAPSHOT" =~ ^https?:// ]]; then
+            echo "✅ Valid URL format detected"
+            BUILD_ARG="--build-arg MODEL_SNAPSHOT_URL=$BUILD_SNAPSHOT"
+            MODEL_IMPORT_ARG="--build-arg MODEL_IMPORT=1"
+        else
+            echo "❌ Invalid URL format. Must start with http:// or https://"
+            exit 1
+        fi
     else
         BUILD_ARG=""
         MODEL_IMPORT_ARG="--build-arg MODEL_IMPORT=0"
@@ -89,6 +103,62 @@ function test() {
     echo -e "\n✅ Test completati con successo!"
 }
 
+function import_snapshot() {
+    local snapshot_url="$2"
+    
+    if [ -z "$snapshot_url" ]; then
+        echo "❌ Errore: URL snapshot richiesto"
+        echo "Utilizzo: $0 import-snapshot <URL_SNAPSHOT>"
+        exit 1
+    fi
+    
+    # Validate URL format
+    if [[ ! "$snapshot_url" =~ ^https?:// ]]; then
+        echo "❌ Errore: URL non valido. Deve iniziare con http:// o https://"
+        exit 1
+    fi
+    
+    echo "📥 Importazione snapshot da: $snapshot_url"
+    
+    # Check if container is running
+    if ! docker ps | grep -q $CONTAINER_NAME; then
+        echo "❌ Errore: Container $CONTAINER_NAME non in esecuzione"
+        echo "Avvia prima il container con: $0 start"
+        exit 1
+    fi
+    
+    # Download snapshot to temp file
+    temp_snapshot="/tmp/comfyui_snapshot_$(date +%s).json"
+    echo "⬇️  Download snapshot..."
+    
+    if curl -L -f -s -o "$temp_snapshot" "$snapshot_url"; then
+        echo "✅ Snapshot scaricato: $temp_snapshot"
+        
+        # Copy to container
+        docker cp "$temp_snapshot" "$CONTAINER_NAME:/comfyui/models_snapshot.json"
+        
+        # Import models
+        echo "📦 Importazione modelli..."
+        docker exec "$CONTAINER_NAME" /comfyui/venv/bin/python /comfyui/scripts/import_models.py /comfyui/models_snapshot.json /comfyui/models
+        
+        if [ $? -eq 0 ]; then
+            echo "✅ Importazione completata con successo!"
+            
+            # Show imported models summary
+            echo "📊 Riepilogo modelli importati:"
+            docker exec "$CONTAINER_NAME" find /comfyui/models -name "*.safetensors" -o -name "*.ckpt" -o -name "*.pt" | head -10
+        else
+            echo "⚠️  Importazione completata con alcuni errori"
+        fi
+        
+        # Cleanup temp file
+        rm -f "$temp_snapshot"
+    else
+        echo "❌ Errore: impossibile scaricare lo snapshot da $snapshot_url"
+        exit 1
+    fi
+}
+
 function benchmark() {
     echo "📊 Benchmark Performance ComfyUI Serverless"
     echo "=============================================="
@@ -129,25 +199,35 @@ function benchmark() {
 function usage() {
     echo "ComfyUI Serverless - Gestione Ottimizzata"
     echo "========================================="
-    echo "Utilizzo: $0 [comando]"
+    echo "Utilizzo: $0 [comando] [parametri]"
     echo ""
     echo "Comandi disponibili:"
-    echo "  build      - Build dell'immagine Docker ottimizzata"
-    echo "  start      - Avvio del container con misurazione performance"
-    echo "  stop       - Arresto del container"
-    echo "  test       - Test delle API"
-    echo "  benchmark  - Benchmark completo delle performance"
+    echo "  build [snapshot_url]    - Build dell'immagine Docker ottimizzata"
+    echo "                           (opzionale: URL snapshot per import durante build)"
+    echo "  start                   - Avvio del container con misurazione performance"
+    echo "  stop                    - Arresto del container"
+    echo "  test                    - Test delle API"
+    echo "  benchmark               - Benchmark completo delle performance"
+    echo "  import-snapshot <url>   - Importa snapshot da URL in container esistente"
     echo ""
     echo "Esempi:"
-    echo "  $0 build && $0 start"
+    echo "  $0 build"
+    echo "  $0 build https://example.com/my-snapshot.json"
+    echo "  $0 start"
+    echo "  $0 import-snapshot https://raw.githubusercontent.com/user/repo/main/snapshot.json"
     echo "  $0 test"
     echo "  $0 benchmark"
+    echo ""
+    echo "Snapshot URL supportati:"
+    echo "  - Raw GitHub URLs"
+    echo "  - Direct HTTP/HTTPS links to JSON files"
+    echo "  - ComfyUI Manager snapshot exports"
 }
 
 # Main
 case "${1:-}" in
     build)
-        build
+        build "$@"
         ;;
     start)
         start
@@ -160,6 +240,9 @@ case "${1:-}" in
         ;;
     benchmark)
         benchmark
+        ;;
+    import-snapshot)
+        import_snapshot "$@"
         ;;
     *)
         usage

@@ -5,6 +5,8 @@ services:
     container_name: comfyui-serverless-api
     ports:
       - "8188:8188"
+    args:
+      - COMFY_SNAPSHOT_URL: "https://example.com/path/to/pip_snapshot.json"
     environment:
       # Ottimizzazioni per cold start serverless
       - CUDA_VISIBLE_DEVICES=
