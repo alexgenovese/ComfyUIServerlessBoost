@@ -62,6 +62,37 @@ docker run -d --name comfyui-api -p 8188:8188 -e CUDA_VISIBLE_DEVICES="" comfyui
 curl http://localhost:8188/system_stats
 ```
 
+### Building with Hugging Face token (recommended: BuildKit secret)
+
+If your snapshot references private models hosted on Hugging Face, provide an HF token to the build without embedding it into image layers by using Docker BuildKit secrets.
+
+Save your token to a local file (or keep it in an env var) and build with BuildKit enabled. The Dockerfile expects the secret id `hf_token` and will read `/run/secrets/hf_token` during the build.
+
+Example (preferred - uses BuildKit secret file):
+
+```bash
+# write token to a temporary file
+printf %s "$HF_TOKEN" > hf_token.txt
+
+# build with BuildKit and supply the secret
+DOCKER_BUILDKIT=1 docker build \
+  --secret id=hf_token,src=./hf_token.txt \
+  --build-arg MODEL_IMPORT=1 \
+  --build-arg MODEL_SNAPSHOT_URL="https://example.com/models_snapshot.json" \
+  -t comfyui-serverless:latest .
+
+# remove token file when done
+rm -f hf_token.txt
+```
+
+Fallback (not recommended): pass `HF_TOKEN` as a build-arg — note this may expose the token in build logs and cache:
+
+```bash
+docker build --build-arg HF_TOKEN="<token>" --build-arg MODEL_IMPORT=1 -t comfyui-serverless:latest .
+```
+
+I included a small helper script `scripts/build_with_secret.sh` to make this easier (see `scripts/`).
+
 ## Dockerfile notes (implementation highlights)
 
 - A virtualenv is created at `/comfyui/venv` and all Python deps are installed into it. The runtime image copies only `/comfyui` including the venv.

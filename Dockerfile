@@ -79,9 +79,6 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git . && \
 # Copy models placeholder (from build context)
 COPY models /comfyui/models
 
-# Copy snapshot file if it exists (for testing)
-COPY pip_snapshot.example.json /comfyui/pip_snapshot.example.json
-
 # Copy import helper
 COPY scripts/import_models.py /comfyui/scripts/import_models.py
 RUN chmod +x /comfyui/scripts/import_models.py || true
@@ -96,6 +93,7 @@ FROM build AS pip-install
 ARG MODEL_SNAPSHOT_URL=""
 ARG MODEL_IMPORT=0
 ARG COMFY_SNAPSHOT_URL=""
+ARG HF_TOKEN=""
 
 # Create venv and upgrade pip tooling
 RUN python3 -m pip install --upgrade pip virtualenv wheel setuptools && \
@@ -105,9 +103,25 @@ RUN python3 -m pip install --upgrade pip virtualenv wheel setuptools && \
 RUN mkdir -p /comfyui/pip_wheels /comfyui/.cache/pip
 
 # Optional: import models snapshot during build (only if MODEL_IMPORT=1)
-RUN if [ "${MODEL_IMPORT}" = "1" ] && [ -n "${MODEL_SNAPSHOT_URL}" ]; then \
+# This step supports BuildKit secrets to supply an HF token without embedding it in image layers.
+# Provide the secret at build time with: --secret id=hf_token,src=/path/to/token
+RUN --mount=type=secret,id=hf_token \
+    if [ "${MODEL_IMPORT}" = "1" ] && [ -n "${MODEL_SNAPSHOT_URL}" ]; then \
         echo "MODEL_IMPORT enabled: fetching models snapshot from ${MODEL_SNAPSHOT_URL}" && \
         wget -q -O /comfyui/models_snapshot.json "${MODEL_SNAPSHOT_URL}" || echo "Failed to fetch snapshot from URL"; \
+        # If a BuildKit secret file is available use it for HF login; fall back to ARG HF_TOKEN if provided
+        if [ -f /run/secrets/hf_token ]; then \
+            echo "Found HF token via buildkit secret, installing huggingface_hub and logging in" && \
+            /comfyui/venv/bin/pip install --no-cache-dir huggingface_hub || true && \
+            HF_TOKEN=$(cat /run/secrets/hf_token) && \
+            /comfyui/venv/bin/huggingface-cli login --token "${HF_TOKEN}" || echo "HF login failed"; \
+        elif [ -n "${HF_TOKEN}" ]; then \
+            echo "HF_TOKEN provided as ARG (will be visible in build args) - installing huggingface_hub and logging in" && \
+            /comfyui/venv/bin/pip install --no-cache-dir huggingface_hub || true && \
+            /comfyui/venv/bin/huggingface-cli login --token "${HF_TOKEN}" || echo "HF login failed"; \
+        else \
+            echo "No HF token provided, continuing without login (private models may fail)"; \
+        fi && \
         if [ -f /comfyui/models_snapshot.json ]; then \
             echo "Importing models from /comfyui/models_snapshot.json" && \
             python3 /comfyui/scripts/import_models.py /comfyui/models_snapshot.json /comfyui/models || echo "Model import finished with errors"; \
@@ -145,10 +159,6 @@ RUN if [ -n "${COMFY_SNAPSHOT_URL}" ]; then \
             cd /comfyui && \
             /comfyui/venv/bin/comfy node restore-snapshot comfy_snapshot || echo "Comfy snapshot restore finished with errors"; \
         fi; \
-    elif [ -f /comfyui/pip_snapshot.example.json ]; then \
-        echo "Using local pip_snapshot.example.json for testing" && \
-        cd /comfyui && \
-        /comfyui/venv/bin/comfy node restore-snapshot pip_snapshot.example || echo "Comfy snapshot restore finished with errors"; \
     else \
         echo "No snapshot provided, skipping snapshot restore"; \
     fi

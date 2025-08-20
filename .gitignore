@@ -16,7 +16,6 @@ pip-selfcheck.json
 *.ckpt
 HYPIR_sd2.pth
 cache/
-models/
 
 # HYPIR repository (downloaded during build)
 HYPIR/
